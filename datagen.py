@@ -1,5 +1,6 @@
 import os
 import cv2
+import random
 import numpy as np
 from sklearn.utils import shuffle as shuffle_tuple
 
@@ -93,6 +94,49 @@ def train_batch_generator(img_path_list, img_label_list, num_classes, image_shap
         X_batch = (X_batch - np.array([0.485, 0.456, 0.406])) / np.array([0.229, 0.224, 0.225])
 
         yield X_batch, y_batch
+
+
+def train_batch_generator_hard_triplet(img_path_list, img_label_list, num_classes, image_shape, P=16, K=4, 
+                            shuffle=False, augment=False):
+    assert len(img_path_list) == len(img_label_list)
+
+    total_num_img = len(img_path_list)
+
+    if shuffle:
+        img_path_list, img_label_list = shuffle_tuple(img_path_list, img_label_list)
+    
+    dic = {}
+    for image_path, image_label in zip(img_path_list, img_label_list):
+        dic.setdefault(image_label, []).append(image_path)
+
+    selected_labels = [k for k, v in dic.items() if len(v) >= K]
+
+    while True:
+        person_ids_sampled = random.sample(list(selected_labels), k=P)
+        img_path_sampled = [random.sample(dic[person_id], k=K) for person_id in person_ids_sampled]
+
+        img_path_sampled_list = []
+        [img_path_sampled_list.extend(w) for w in img_path_sampled]
+
+        person_ids_sampled_list = []
+        tmp_sampled_list = [[w] * K for w in person_ids_sampled]
+        [person_ids_sampled_list.extend(w) for w in tmp_sampled_list]
+
+        y_batch = np.array(person_ids_sampled_list)
+        X_batch, Y_batch = load_img_batch(
+            img_path_sampled_list, person_ids_sampled_list, 
+            num_classes=num_classes, image_shape=image_shape
+        )
+
+        if augment:
+            X_batch = X_batch.astype(np.uint8)
+            X_batch = seq.augment_images(X_batch)
+        
+        X_batch = X_batch / 255.
+
+        X_batch = (X_batch - np.array([0.485, 0.456, 0.406])) / np.array([0.229, 0.224, 0.225])
+
+        yield (X_batch, [y_batch, Y_batch])
     
 
 def predict_batch_generator(img_path_list, image_shape, batch_size=32):

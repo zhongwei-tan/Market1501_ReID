@@ -6,7 +6,7 @@ import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import ModelCheckpoint
 # from datagen import train_batch_generator, predict_batch_generator
-from utils import create_model, DataGenerator
+from utils.cnn import create_model, DataGenerator
 
 from utils.general import categorical_crossentropy_label_smoothing
 

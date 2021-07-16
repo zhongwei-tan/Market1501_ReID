@@ -8,7 +8,7 @@ from tensorflow.python.keras.applications.mobilenet_v2 import MobileNetV2
 from tensorflow.keras.layers import Dense, Activation
 from tensorflow.keras.models import Model
 
-from general import seq
+from .general import seq
 
 
 def create_model(image_shape, num_person_ids):
@@ -39,8 +39,6 @@ class DataGenerator(Sequence):
         return math.ceil(len(self.x) / self.batch_size)
 
     def __getitem__(self, idx):
-
-        # curr_batch_size = self.batch_size if self.total_num_image > ((idx + 1) * self.batch_size) else (self.total_num_image - idx * self.batch_size)
 
         batch_x = self.x[idx * self.batch_size: (idx + 1) * self.batch_size]
         batch_y = self.y[idx * self.batch_size: (idx + 1) * self.batch_size]
