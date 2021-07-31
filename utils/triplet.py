@@ -7,7 +7,7 @@ from tensorflow.keras.preprocessing.image import load_img
 from tensorflow.python.keras.applications.mobilenet_v2 import MobileNetV2
 from tensorflow.python.keras.applications.resnet_v2 import ResNet50V2
 from tensorflow.keras.layers import Dense, Activation, Lambda, BatchNormalization, Input, concatenate, Embedding
-from tensorflow.keras.models import Model
+from tensorflow.keras.models import Model, model_from_json
 from tensorflow.keras import backend as K
 
 from .general import seq
@@ -40,17 +40,17 @@ def create_model(image_shape, num_person_ids, show_model_summary=False):
     return triplet_model
 
 
-def create_semi_hard_triplet_model(image_shape, num_person_ids, show_model_summary=False, resnet=True, last_stride_reduce=True, bn=True, center_loss=True):
+def create_semi_hard_triplet_model(image_shape, num_person_ids, show_model_summary=False, resnet=True, last_stride_reduce=True, bn=True, center_loss=True, average_pooling=True):
     if resnet:
         print("Using model ResNet50V2\n")
-        cnn_model = ResNet50V2(input_shape=image_shape, include_top=False, pooling="avg")
+        cnn_model = ResNet50V2(input_shape=image_shape, include_top=False, pooling=("avg" if average_pooling else "max"))
         if last_stride_reduce:
             cnn_model.get_layer("conv4_block6_2_conv").strides = (1,1)
             cnn_model.get_layer("max_pooling2d_2").strides = (1,1)
             cnn_model = model_from_json(cnn_model.to_json())
     else:
         print("Using model MobileNetV2\n")
-        cnn_model = MobileNetV2(input_shape=image_shape, alpha=0.5, include_top=False, pooling="avg")
+        cnn_model = MobileNetV2(input_shape=image_shape, alpha=0.5, include_top=False, pooling=("avg" if average_pooling else "max"))
         if last_stride_reduce:
             cnn_model.get_layer("block_13_pad").padding = (1,1)
             cnn_model.get_layer("block_13_depthwise").strides = (1,1)

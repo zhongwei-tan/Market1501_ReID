@@ -61,7 +61,7 @@ else:
 
 # Train model
 checkpoint_path = "model_checkpoints/model_checkpoint-triplet-{epoch:02d}-{val_triplet_loss:.4f}.h5"
-checkpoint = ModelCheckpoint(checkpoint_path, monitor="val_triplet_loss", verbose=1, save_best_only=Truesave_freq=(50 * len(train_image_paths) / batch_size))
+checkpoint = ModelCheckpoint(checkpoint_path, monitor="val_triplet_loss", verbose=1, save_best_only=True, save_freq=(50 * len(train_image_paths) / batch_size))
 
 learning_rate_decay = LearningRateScheduler(lr_decay_warmup, verbose=1)
 
