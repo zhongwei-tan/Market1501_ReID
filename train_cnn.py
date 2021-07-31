@@ -43,7 +43,7 @@ baseline_model.compile(optimizer=optimizer, loss=loss, metrics=["accuracy"])
 
 # Train model
 checkpoint_path = "model_checkpoints/model_checkpoint-{epoch:02d}-{loss:.4f}.h5"
-checkpoint = ModelCheckpoint(checkpoint_path, monitor="val_accuracy", verbose=1, save_best_only=True, save_freq=(50 * len(train_image_paths) / batch_size))
+checkpoint = ModelCheckpoint(checkpoint_path, monitor="val_accuracy", verbose=1, save_best_only=True, save_freq=int(50 * len(train_image_paths) / batch_size))
 callbacks = [checkpoint]
 
 train_generator = DataGenerator(train_img_paths, train_person_ids, batch_size=batch_size, num_classes=num_person_ids, shuffle=True, augment=True)
