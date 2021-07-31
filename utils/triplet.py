@@ -5,9 +5,9 @@ from sklearn.utils import shuffle as shuffle_tuple
 from tensorflow.keras.utils import Sequence, to_categorical
 from tensorflow.keras.preprocessing.image import load_img
 from tensorflow.python.keras.applications.mobilenet_v2 import MobileNetV2
-from tensorflow.keras.layers import Dense, Activation, Lambda
+from tensorflow.python.keras.applications.resnet_v2 import ResNet50V2
+from tensorflow.keras.layers import Dense, Activation, Lambda, BatchNormalization, Input, concatenate, Embedding
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, concatenate
 from tensorflow.keras import backend as K
 
 from .general import seq
@@ -40,24 +40,48 @@ def create_model(image_shape, num_person_ids, show_model_summary=False):
     return triplet_model
 
 
-def create_semi_hard_triplet_model(image_shape, num_person_ids, show_model_summary=False):
-    cnn_model = MobileNetV2(input_shape=image_shape, alpha=0.5, include_top=False, pooling="max")
-    cnn_model.trainable = False
+def create_semi_hard_triplet_model(image_shape, num_person_ids, show_model_summary=False, resnet=True, last_stride_reduce=True, bn=True, center_loss=True):
+    if resnet:
+        print("Using model ResNet50V2\n")
+        cnn_model = ResNet50V2(input_shape=image_shape, include_top=False, pooling="avg")
+        if last_stride_reduce:
+            cnn_model.get_layer("conv4_block6_2_conv").strides = (1,1)
+            cnn_model.get_layer("max_pooling2d_2").strides = (1,1)
+            cnn_model = model_from_json(cnn_model.to_json())
+    else:
+        print("Using model MobileNetV2\n")
+        cnn_model = MobileNetV2(input_shape=image_shape, alpha=0.5, include_top=False, pooling="avg")
+        if last_stride_reduce:
+            cnn_model.get_layer("block_13_pad").padding = (1,1)
+            cnn_model.get_layer("block_13_depthwise").strides = (1,1)
+            cnn_model = model_from_json(cnn_model.to_json())
 
     global_pool = cnn_model.layers[-1].output
-    dense_normalized = Lambda(lambda x: K.l2_normalize(x, axis=1), name="triplet")(global_pool)
+    cnn_model.layers[-1]._name = "triplet"
     
-    dense = Dense(num_person_ids)(global_pool)
+    if bn:
+        features_bn = BatchNormalization(name="features_bn")(global_pool)
+        dense = Dense(num_person_ids)(features_bn)
+    else:
+        dense = Dense(num_person_ids)(global_pool)
     softmax_output = Activation("softmax", name="softmax")(dense)
     
-    triplet_model = Model(cnn_model.input, [dense_normalized, softmax_output])
+    if center_loss:
+        input_target = Input(shape=(1,))
+        centers = Embedding(num_person_ids, global_pool.shape[-1], name="embedding_center")(input_target)
+        center_loss = Lambda(lambda x: 0.5 * K.sum(K.square((x[0] - x[1])), axis=1, keepdims=True), name="center")((global_pool, centers))
+        triplet_model = Model([cnn_model.input, input_target], [global_pool, softmax_output, center_loss])
+    else:
+        triplet_model = Model(cnn_model.input, [global_pool, softmax_output])
 
     if show_model_summary:
         triplet_model.summary()
     
     return triplet_model
-
-
+    
+####
+# Self defined triplet loss
+####
 def triplet_loss(y_true, y_pred, alpha=0.3):
     y_pred = K.l2_normalize(y_pred, axis=1)
     batch_num = y_pred.shape.as_list()[-1] // 3
@@ -73,12 +97,27 @@ def triplet_loss(y_true, y_pred, alpha=0.3):
 
     return loss
 
+####
+# Learning rate from paper
+####
+def lr_decay_warmup(epoch, initial_rate):
+    epoch += 1
+    if epoch < 11:
+        return 3.5e-4 * epoch / 10
+    elif epoch < 41:
+        return 3.5e-4
+    elif epoch < 71:
+        return 3.5e-5
+    else:
+        return 3.5e-6
+    
 
-# Here, `x_set` is list of path to the images
-# and `y_set` are the associated classes.
 
+# Train data generator for cnn
 class DataGenerator(Sequence):
 
+    # Here, `x_set` is list of path to the images
+    # and `y_set` are the associated classes.
     def __init__(self, x_set, y_set, batch_size, num_classes, shuffle=False, augment=False):
         self.x, self.y = x_set, y_set
         self.batch_size = batch_size
@@ -109,7 +148,7 @@ class DataGenerator(Sequence):
 
         return batch_x, batch_y
 
-
+# Train data generator for self defined triplet loss model
 class DataGeneratorTriplet(Sequence):
     def __init__(self, x_set, y_set, batch_size, num_classes, shuffle=False, augment=False):
         self.x, self.y = x_set, y_set
@@ -177,8 +216,9 @@ class DataGeneratorTriplet(Sequence):
         return ([anchor_X_batch, positive_X_batch, negative_X_batch], [anchor_Y_batch, anchor_Y_batch])
 
 
+# Train data generator for tensorflow-addons semihardtriplet loss model
 class DataGeneratorHardTriplet(Sequence):
-    def __init__(self, x_set, y_set, person_id_num, image_per_person_id, num_classes, shuffle=False, augment=False):
+    def __init__(self, x_set, y_set, person_id_num, image_per_person_id, num_classes, shuffle=False, augment=False, center_loss=True):
         self.x, self.y = x_set, y_set
 
         # Make dict with key -> person_id, value -> list of associated images
@@ -194,13 +234,14 @@ class DataGeneratorHardTriplet(Sequence):
         self.num_classes = num_classes
         self.shuffle = shuffle
         self.augment = augment
+        self.center_loss = center_loss
 
     def __len__(self):
         return math.ceil(len(self.x) / (self.person_id_num * self.image_per_person_id))
 
     def __getitem__(self, idx):
 
-        if self.shuffle:
+        if self.shuffle: 
             random.shuffle(self.y_filtered)
 
         # Get random sample of ids; amount: `person_id_num`
@@ -224,4 +265,36 @@ class DataGeneratorHardTriplet(Sequence):
         
         Y_batch = to_categorical(np.array(label_sampled), num_classes=self.num_classes)
 
-        return (X_batch, [label_sampled, Y_batch])
+        if self.center_loss:
+            return ([X_batch, label_sampled], [label_sampled, Y_batch, label_sampled])
+        else:
+            return (X_batch, [label_sampled, Y_batch])
+
+
+# Test data generator
+class DataGeneratorPredict(Sequence):
+
+    def __init__(self, x_set, batch_size, shuffle=False, augment=False):
+        self.x = x_set
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.augment = augment
+
+    def __len__(self):
+        return math.ceil(len(self.x) / self.batch_size)
+
+    def __getitem__(self, idx):
+
+        batch_x = self.x[idx * self.batch_size: (idx + 1) * self.batch_size]
+
+        if self.augment:
+            batch_x = np.array([np.asarray(load_img(file_path)).astype(np.uint8) for file_path in batch_x]).astype(np.uint8)
+            batch_x = seq.augment_images(batch_x)
+            batch_x = batch_x / 255.
+        else:
+            batch_x = np.array([np.asarray(load_img(file_path)) / 255. for file_path in batch_x])
+
+        batch_x = (batch_x - np.array([0.485, 0.456, 0.406])) / np.array([0.229, 0.224, 0.225])
+
+        return batch_x
+    

@@ -5,20 +5,18 @@ from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import ModelCheckpoint
-# from datagen import train_batch_generator, predict_batch_generator
-from utils.cnn import create_model, DataGenerator
 
+from utils.cnn import create_model, DataGenerator
 from utils.general import categorical_crossentropy_label_smoothing
 
-# tf.device("/cpu:0")
 
 # Set training parameters
 image_shape = (128, 64, 3)  # h x w x c
-# learning_rate = 0.01
-learning_rate = tf.keras.optimizers.schedules.ExponentialDecay(0.01, 10, 0.96, staircase=True)
+learning_rate = 0.0001
+# learning_rate = tf.keras.optimizers.schedules.ExponentialDecay(0.01, 10, 0.96, staircase=True)
 batch_size = 128
 num_epoch = 200
-use_label_smoothing = True
+use_label_smoothing = False
 
 # Import and preprocess data
 train_image_dir = "/home/opendata/PersonReID/market1501/bounding_box_train"
@@ -44,8 +42,8 @@ optimizer = Adam(learning_rate=learning_rate)
 baseline_model.compile(optimizer=optimizer, loss=loss, metrics=["accuracy"])
 
 # Train model
-checkpoint_path = "model_checkpoint"
-checkpoint = ModelCheckpoint(checkpoint_path, monitor="val_accuracy", verbose=1, save_best_only=True)
+checkpoint_path = "model_checkpoints/model_checkpoint-{epoch:02d}-{loss:.4f}.h5"
+checkpoint = ModelCheckpoint(checkpoint_path, monitor="val_accuracy", verbose=1, save_best_only=True, save_freq=(50 * len(train_image_paths) / batch_size))
 callbacks = [checkpoint]
 
 train_generator = DataGenerator(train_img_paths, train_person_ids, batch_size=batch_size, num_classes=num_person_ids, shuffle=True, augment=True)
@@ -79,17 +77,4 @@ baseline_model.fit(
 # )
 
 print("Training completed and model saved.")
-baseline_model.save("mobilenetv2_Adam_shuffled_augmented_exponential.h5")
-
-
-# test_img_dir = "/home/opendata/PersonReID/market1501/bounding_box_test"
-# test_image_filenames = sorted([filename for filename in os.listdir(test_img_dir) if filename.endswith(".jpg") and filename[:4] in label_encoder.classes_])
-# test_image_paths = [os.path.join(test_img_dir, name) for name in test_image_filenames]
-# test_person_ids = [name[:4] for name in test_image_filenames]
-# test_person_ids_encoded = label_encoder.transform(test_person_ids)
-
-# test_data_generator = DataGenerator(test_image_paths, test_person_ids, batch_size=batch_size)
-
-# score, acc = baseline_model.evaluate(test_data_generator)
-# print('Test score:', score)
-# print('Test accuracy:', acc)
+baseline_model.save("mobilenetv2_freeze_01.h5")

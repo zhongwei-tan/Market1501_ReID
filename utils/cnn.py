@@ -5,20 +5,27 @@ from tensorflow.keras.preprocessing.image import load_img
 from sklearn.utils import shuffle as shuffle_tuple
 
 from tensorflow.python.keras.applications.mobilenet_v2 import MobileNetV2
+from tensorflow.python.keras.applications.resnet_v2 import ResNet50V2
 from tensorflow.keras.layers import Dense, Activation
 from tensorflow.keras.models import Model
 
 from .general import seq
 
 
-def create_model(image_shape, num_person_ids):
-    cnn_model = MobileNetV2(input_shape=image_shape, alpha=0.5, include_top=False, pooling="max")
-    cnn_model.trainable = False
+def create_model(image_shape, num_person_ids, resnet=True):
+    if resnet:
+        print("Using ResNet50V2")
+        cnn_model = ResNet50V2(input_shape=image_shape, include_top=False, pooling="max")
+    else:
+        print("Using MobileNetV2")
+        cnn_model = MobileNetV2(input_shape=image_shape, alpha=0.5, include_top=False, pooling="max")
+    cnn_model.trainable = True
     global_pool = cnn_model.layers[-1].output  # 1 x 1 x 2048
+    cnn_model.layers[-1]._name = "features"
     dense = Dense(num_person_ids)(global_pool)
-    softmax_output = Activation("softmax")(dense)
+    softmax_output = Activation("softmax", name="softmax")(dense)
     baseline_model = Model(cnn_model.input, softmax_output)
-    baseline_model.summary()
+    # baseline_model.summary()
     return baseline_model
 
 
