@@ -38,8 +38,9 @@ def mAP(queries, galleries, sorted_distance_query_gallery):
 ####
 # Define model path and test parameters
 ####
-model = load_model("resnet50v2_triplet_added_tricks_rmbn_2.h5", compile=False)
-center_loss = True  # change this according to the model used
+model = load_model("resnet50v2_triplet_rmbn_randomerase.h5", compile=False)
+center_loss = False  # change this according to the model used
+bnneck = False  # change this according to the model used
 batch_size = 128
 
 ####
@@ -64,8 +65,11 @@ gallery_image_paths = [os.path.join(gallery_dir, name) for name in gallery_image
 # Define model with desired input output
 ####
 if center_loss:
-    dense_features = model.get_layer("features_bn").output
+    dense_features = model.get_layer("features_bn" if bnneck else "triplet").output
     model_extract_features = Model(model.input[0], dense_features)
+elif bnneck:
+    dense_features = model.get_layer("features_bn").output
+    model_extract_features = Model(model.input, dense_features)
 else:
     dense_features = model.get_layer("triplet").output
     model_extract_features = Model(model.input, dense_features)

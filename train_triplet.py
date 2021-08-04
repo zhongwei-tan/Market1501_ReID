@@ -18,10 +18,12 @@ num_epoch = 200
 
 use_semi_hard_triplet_loss = True
 resnet = True
-use_label_smoothing = True
-last_stride_reduce = True
-bn = True
-center_loss = True
+use_label_smoothing = False
+last_stride_reduce = False
+bn = False
+center_loss = False
+use_learning_rate_decay = False
+use_model_checkpoint = False
 
 # Import and preprocess data
 train_image_dir = "/home/opendata/PersonReID/market1501/bounding_box_train"
@@ -60,12 +62,15 @@ else:
     model.compile(optimizer=optimizer, loss=loss, metrics={"triplet": "accuracy", "softmax": "accuracy"}, loss_weights=None)
 
 # Train model
-checkpoint_path = "model_checkpoints/model_checkpoint-triplet-{epoch:02d}-{val_triplet_loss:.4f}.h5"
-checkpoint = ModelCheckpoint(checkpoint_path, monitor="val_triplet_loss", verbose=1, save_best_only=True, save_freq=int(50 * len(train_image_paths) / batch_size))
 
-learning_rate_decay = LearningRateScheduler(lr_decay_warmup, verbose=1)
-
-callbacks = [checkpoint, learning_rate_decay]
+callbacks = []
+if use_learning_rate_decay:
+    learning_rate_decay = LearningRateScheduler(lr_decay_warmup, verbose=1)
+    callbacks.append(learning_rate_decay)
+if use_model_checkpoint:
+    checkpoint_path = "model_checkpoints/model_checkpoint-triplet-{epoch:02d}-{val_triplet_loss:.4f}.h5"
+    checkpoint = ModelCheckpoint(checkpoint_path, monitor="val_triplet_loss", verbose=1, save_best_only=True, save_freq=int(50 * len(train_image_paths) / batch_size))
+    callbacks.append(checkpoint)
 
 if use_semi_hard_triplet_loss:
     train_generator = DataGeneratorHardTriplet(train_img_paths, train_person_ids, person_id_num, image_per_person_id, num_classes=num_person_ids, shuffle=True, augment=True, center_loss=center_loss)
@@ -83,4 +88,4 @@ model.fit(
 )
 
 print("Training completed and model saved.")
-model.save("resnet50v2_triplet_rmbn_avg2.h5")
+model.save("resnet50v2_model_.h5")
